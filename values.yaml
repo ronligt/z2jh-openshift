@@ -42,6 +42,7 @@ singleuser:
   fsGid:
   cloudMetadata:
     blockWithIptables: false
+  # fix storage problem when using jupyterhub 5.3.0
   storage:
     type: dynamic
     capacity: 1Gi
@@ -71,6 +72,7 @@ prePuller:
 
 scheduling:
   userScheduler:
+    # quick fix for openshift auth problem: "cannot get resource..."
     enabled: false
     containerSecurityContext:
       <<: *security_context
