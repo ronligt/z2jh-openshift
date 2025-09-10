@@ -42,6 +42,15 @@ singleuser:
   fsGid:
   cloudMetadata:
     blockWithIptables: false
+  storage:
+    type: dynamic
+    capacity: 1Gi
+    homeMountPath: /home/jovyan
+    dynamic:
+      storageClass: ocs-storagecluster-ceph-rbd
+      pvcNameTemplate: claim-{username}-{servername}
+      volumeNameTemplate: claim-{username}-{servername}
+
 
 prePuller:
   containerSecurityContext:
