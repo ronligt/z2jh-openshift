@@ -31,10 +31,44 @@ proxy:
 hub:
   podSecurityContext:
     fsGroup:
+    fsGroupChangePolicy: OnRootMismatch
   containerSecurityContext:
     <<: *security_context
     runAsUser: # let openshift set the value
     runAsGroup: # let openshift set the value
+  config:
+    Authenticator:
+      admin_users:
+        - rligteringen
+        - joffreywallaar
+        - ronald
+    GenericOAuthenticator:
+      client_id: "notebook-tw1-13.apps.ocp.k8s.tudelft.nl"
+      client_secret: "5d6665d1-6f2c-41be-a877-df8f62f95b8f"   # or pull from a secret via extraEnv (below)
+      authorize_url: "https://auth-test.tudelft.nl/auth/realms/login-tudelft/protocol/openid-connect/auth"
+      token_url: "https://auth-test.tudelft.nl/auth/realms/login-tudelft/protocol/openid-connect/token"
+      userdata_url: "https://auth-test.tudelft.nl/auth/realms/login-tudelft/protocol/openid-connect/userinfo"
+      oauth_callback_url: "https://notebook-tw1-13.apps.ocp.k8s.tudelft.nl/hub/oauth_callback"
+      scope:
+        - openid
+      username_claim: "preferred_username"
+      login_service: "TU Delft netID"
+      allow_all: true
+    JupyterHub:
+      authenticator_class: generic-oauth
+  extraConfig:
+    10-strip-domain: |
+      # Strip @domain from the username returned by the IdP
+      from oauthenticator.generic import GenericOAuthenticator
+
+      async def strip_domain(authenticator, handler, auth_model):
+          # auth_model["name"] is the username JupyterHub will store
+          name = auth_model.get("name") or ""
+          if "@" in name:
+              auth_model["name"] = name.split("@", 1)[0]
+          return auth_model
+
+      c.GenericOAuthenticator.post_auth_hook = strip_domain
 
 singleuser:
   # startTimeout: 1200 # Extend because of large image size.
@@ -42,16 +76,47 @@ singleuser:
   fsGid:
   cloudMetadata:
     blockWithIptables: false
-  # fix storage problem when using jupyterhub 5.3.0
+  # cpu:
+  #   limit: 2
+  # memory:
+  #   limit: '4Gi'
   storage:
-    type: dynamic
-    capacity: 1Gi
-    homeMountPath: /home/jovyan
-    dynamic:
-      storageClass: ocs-storagecluster-ceph-rbd
-      pvcNameTemplate: claim-{username}-{servername}
-      volumeNameTemplate: claim-{username}-{servername}
-
+    # Prefer one home-storage with home directory per user
+    # shortens startup time new users.
+    type: static
+    static:
+      pvcName: 'shared-home'
+      subPath: '{username}'
+    # type: dynamic
+    # capacity: 5Gi
+    # homeMountPath: /home/jovyan
+    # dynamic:
+    #   storageClass: ocs-storagecluster-ceph-rbd
+    #   pvcNameTemplate: claim-{username}-{servername}
+    #   volumeNameTemplate: claim-{username}-{servername}
+    # extraVolumes:
+    #   - name: init-notebook
+    #     configMap:
+    #       name: init-notebook
+    # extraVolumeMounts:
+    #   - name: init-notebook
+    #     mountPath: /opt/init
+    #     readOnly: true
+  image:
+#    name: quay.io/jupyter/scipy-notebook
+#    tag: latest
+    name: ronligt/jupyter-tw1-13
+    tag: "2"
+  # lifecycleHooks:
+  #   postStart:
+  #     exec:
+  #       command:
+  #         - "bash"
+  #         - "-c"
+  #         - >
+  #           if [ ! -e ./worksheet_6b_numpy.ipynb ]; then
+  #             cp -n /opt/init/worksheet_6b_numpy.ipynb ./;
+  #           fi
 
 prePuller:
   containerSecurityContext:
@@ -72,7 +137,6 @@ prePuller:
 
 scheduling:
   userScheduler:
-    # quick fix for openshift auth problem: "cannot get resource..."
     enabled: false
     containerSecurityContext:
       <<: *security_context
