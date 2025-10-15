@@ -1,7 +1,9 @@
 kind: Route
 apiVersion: route.openshift.io/v1
 metadata:
-  name: notebooks
+  # had to rename from 'notebooks' (default)
+  # mistakenly configuring openid with 'notebook' (singular)
+  name: notebook
 spec:
   to:
     kind: Service
