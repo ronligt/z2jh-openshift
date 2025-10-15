@@ -1,0 +1,12 @@
+# ngshare-data-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ngshare-data
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi   # pick a size you like
+  storageClassName: ocs-storagecluster-cephfs

@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nbgrader-exchange-init
+  namespace: nbgrader          # <-- set your namespace
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init-exchange
+          image: registry.access.redhat.com/ubi9/ubi
+          command: ["bash","-lc"]
+          args:
+            - |
+              set -euo pipefail
+              # ensure setfacl is available
+              microdnf -y install acl >/dev/null 2>&1 || dnf -y install acl >/dev/null 2>&1
+
+              base=/srv/nbgrader/exchange
+              mkdir -p "$base"/{inbound,outbound,feedback}
+
+              # classic nbgrader directory permissions
+              chmod 1733 "$base/inbound"    # rwx-wx-wx + sticky
+              chmod 0755 "$base/outbound"   # rwxr-xr-x
+              chmod 0711 "$base/feedback"   # rwx--x--x
+
+              # Grant instructors (GID 2000) access via POSIX ACLs
+              # - allow rwx for group 2000
+              # - set default ACLs so files/dirs created under these inherit g:2000:rwx
+              for d in inbound outbound feedback; do
+                setfacl -m g:2000:rwx "$base/$d"
+                setfacl -d -m g:2000:rwx "$base/$d"
+              done
+
+              # Tighten "others" as needed (modes above already handle that)
+              # Inbound remains drop-box (others get -wx via 1733)
+              # Outbound/feedback remain non-writable to students
+          volumeMounts:
+            - name: nbgrader-exchange
+              mountPath: /srv/nbgrader
+      volumes:
+        - name: nbgrader-exchange
+          persistentVolumeClaim:
+            claimName: nbgrader-exchange   # your RWX CephFS PVC

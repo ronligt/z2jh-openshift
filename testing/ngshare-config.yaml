@@ -1,0 +1,25 @@
+ngshare:
+  hub_api_token: a096c6903787ee629eae0ce89f072384b3cc419867c6bb6f726d2ee94e02938f
+  admins:
+    - rligteringen
+
+pvc:
+  storage: 20Gi
+  storageClassName: ocs-storagecluster-cephfs
+  accessModes:
+    - ReadWriteMany
+
+deployment:
+  fsGroup: 1001550000
+  
+# ↓ Add this block (names differ per chart; this fits ngshare 0.6.0)
+securityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 1001550000
+  fsGroup: 1001550000
+  fsGroupChangePolicy: OnRootMismatch
+
+# (Optional but helpful) make probes point to numeric port if chart supports it
+service:
+  port: 8080

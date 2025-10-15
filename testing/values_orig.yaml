@@ -1,0 +1,177 @@
+# Note: you can amend this values.yaml file to substitute your own custom docker images instead of those
+# provided by the Jupyter project if required.
+
+proxy:
+  service:
+    type: ClusterIP
+  https: # Enable and extend to configure HTTPS.
+    enabled: false
+  traefik:
+    containerSecurityContext: &security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+  secretSync:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  chp:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+hub:
+  podSecurityContext:
+    fsGroup: 1001640000
+    fsGroupChangePolicy: OnRootMismatch
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+
+  # extraConfig:
+  #   10-supplemental-gids: |
+  #     INSTRUCTORS = {"rligteringen"}
+  #     async def apply_instructor_gid(spawner):
+  #       if spawner.user.name in INSTRUCTORS:
+  #         spawner.supplemental_gids = [2000]
+  #     c.Spawner.pre_spawn_hook = apply_instructor_gid
+  extraConfig:
+    11-role-based-mounts: |
+      INSTRUCTORS = {"rligteringen"}
+      EX_VOL = {
+          "name": "nbgrader-exchange",
+          "persistentVolumeClaim": {"claimName": "nbgrader-exchange"},
+      }
+
+      async def apply_role(spawner):
+          # Ensure the volume is present
+          vols = [v for v in spawner.volumes if v.get("name") == "nbgrader-exchange"]
+          if not vols:
+              spawner.volumes.append(EX_VOL)
+
+          # Base mount paths
+          mnts = []
+
+          def m(subpath, mount_path, read_only):
+              return {
+                  "name": "nbgrader-exchange",
+                  "subPath": subpath,          # e.g. "inbound"
+                  "mountPath": mount_path,     # e.g. "/srv/nbgrader/exchange/inbound"
+                  "readOnly": read_only,
+              }
+
+          if spawner.user.name in INSTRUCTORS:
+              spawner.supplemental_gids = [2000]
+              mnts += [
+                  m("exchange/inbound",  "/srv/nbgrader/exchange/inbound",  False),
+                  m("exchange/outbound", "/srv/nbgrader/exchange/outbound", False),
+                  m("exchange/feedback", "/srv/nbgrader/exchange/feedback", False),
+              ]
+          else:
+              # student: only inbound is RW; others are RO
+              mnts += [
+                  m("exchange/inbound",  "/srv/nbgrader/exchange/inbound",  False),
+                  m("exchange/outbound", "/srv/nbgrader/exchange/outbound", True),
+                  m("exchange/feedback", "/srv/nbgrader/exchange/feedback", True),
+              ]
+
+          spawner.volume_mounts = [vm for vm in spawner.volume_mounts if vm.get("name") != "nbgrader-exchange"] + mnts
+
+      c.Spawner.pre_spawn_hook = apply_role
+
+singleuser:
+  # startTimeout: 1200 # Extend because of large image size.
+  uid:  # let openshift set the value
+  # uid: 1001640001
+  fsGid: 
+  cloudMetadata:
+    blockWithIptables: false
+  storage:
+    type: dynamic
+    capacity: 10Gi
+    homeMountPath: /home/jovyan
+    dynamic:
+      storageClass: ocs-storagecluster-ceph-rbd
+      pvcNameTemplate: claim-{username}-{servername}
+      volumeNameTemplate: claim-{username}-{servername}
+    # mount the nbgrader exchange PVC and set permissions
+    extraVolumes:
+      - name: nbgrader-exchange
+        persistentVolumeClaim:
+          claimName: nbgrader-exchange # from nbgrader-exchange-pvc.yaml (RWX CephFS)
+
+    # extraVolumeMounts:
+    #   - name: nbgrader-exchange
+    #     mountPath: /srv/nbgrader
+    #     readOnly: false
+
+  image:
+    name: ronligt/jupyter-nbgrader
+    tag: "jupyter_scipy_py3_12_nbgrader_acl"
+
+  # lifecycleHooks:
+  #   postStart:
+  #     exec:
+  #       command:
+  #         - sh
+  #         - -c
+  #         - >
+  #           mkdir -p /srv/nbgrader/exchange &&
+  #           chmod 777 /srv/nbgrader/exchange
+
+
+  extraFiles:
+    # Fixing iframe bug in Formgrader
+    jupyter_server_config.py:
+      mountPath: /etc/jupyter/jupyter_server_config.py
+      stringData: |
+        c = get_config()
+        # Allow the JupyterLab page (same origin) AND your Route domain to frame /formgrader
+        c.ServerApp.tornado_settings = {
+          "headers": {
+            # Adjust the wildcard to your Route base domain if different
+            "Content-Security-Policy": "frame-ancestors 'self' https://notebooks-nbgrader.apps.ocp4.tudelft.nl"
+          }
+        }
+    nbgrader_config.py:
+      mountPath: /etc/jupyter/nbgrader_config.py
+      stringData: |
+        import os
+        c = get_config()
+        c.Exchange.root = "/srv/nbgrader/exchange"
+        c.Exchange.path_includes_course = True
+        c.CourseDirectory.course_id = "ap3122"
+
+prePuller:
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+  hook:
+    enabled: true
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  pause:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+scheduling:
+  userScheduler:
+    enabled: false
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value

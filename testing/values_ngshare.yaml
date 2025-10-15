@@ -1,0 +1,136 @@
+# Note: you can amend this values.yaml file to substitute your own custom docker images instead of those
+# provided by the Jupyter project if required.
+
+proxy:
+  service:
+    type: ClusterIP
+  https: # Enable and extend to configure HTTPS.
+    enabled: false
+  traefik:
+    containerSecurityContext: &security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+  secretSync:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  chp:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+hub:
+  podSecurityContext:
+    fsGroup:
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+  config:
+    Authenticator:
+      admin_users:
+        - rligteringen
+
+  extraConfig:
+    ngshare.py: |
+      c.JupyterHub.services.append({
+        'name': 'ngshare',
+        'url': 'http://ngshare.nbgrader.svc.cluster.local:8080',
+        'api_token': 'a096c6903787ee629eae0ce89f072384b3cc419867c6bb6f726d2ee94e02938f',
+        'oauth_no_confirm': True})
+
+singleuser:
+  # startTimeout: 1200 # Extend because of large image size.
+  uid: # let openshift set the value
+  fsGid:
+  cloudMetadata:
+    blockWithIptables: false
+  image:
+    name: ronligt/jupyter-nbgrader
+    tag: "jupyter_scipy_py3_10_nbgrader_ngshare_exchange"
+  networkPolicy:
+    egressAllowRules:
+      privateIPs: true
+
+  # storage:
+  #   type: dynamic
+  #   extraVolumes:
+  #     - name: nbgrader-exchange
+  #       persistentVolumeClaim:
+  #         claimName: nbgrader-exchange
+  #   extraVolumeMounts:
+  #     - name: nbgrader-exchange
+  #       mountPath: /srv/nbgrader
+
+  # lifecycleHooks:
+  #   postStart:
+  #     exec:
+  #       command:
+  #         - sh
+  #         - -c
+  #         - |
+  #           mkdir -p /srv/nbgrader/exchange && chmod 0777 /srv/nbgrader/exchange || true
+
+  extraFiles:
+    nbgrader_config.py:
+      mountPath: /etc/jupyter/nbgrader_config.py
+      stringData: |
+        from ngshare_exchange import configureExchange
+        c=get_config()
+        configureExchange(c, 'http://ngshare.nbgrader.svc.cluster.local:8080/services/ngshare')
+        # Add the following line to let students access courses without configuration
+        # For more information, read Notes for Instructors in the documentation
+        c.CourseDirectory.course_id = '*'
+
+    # Fix for iframe problems with Formgrader
+    jupyter_server_config.py:
+      mountPath: /etc/jupyter/jupyter_server_config.py
+      stringData: |
+        c = get_config()
+        # Allow the JupyterLab page (same origin) AND your Route domain to frame /formgrader
+        c.ServerApp.tornado_settings = {
+          "headers": {
+            # Adjust the wildcard to your Route base domain if different
+            "Content-Security-Policy": "frame-ancestors 'self' https://notebooks-nbgrader.apps.ocp4.tudelft.nl"
+          }
+        }
+
+  # extraPodConfig:
+  #   securityContext:
+  #     fsGroup: 0
+  #     fsGroupChangePolicy: "OnRootMismatch"
+
+
+prePuller:
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+  hook:
+    enabled: true
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  pause:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+scheduling:
+  userScheduler:
+    enabled: false
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value

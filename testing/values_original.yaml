@@ -1,0 +1,123 @@
+# Note: you can amend this values.yaml file to substitute your own custom docker images instead of those
+# provided by the Jupyter project if required.
+
+proxy:
+  service:
+    type: ClusterIP
+  https: # Enable and extend to configure HTTPS.
+    enabled: false
+  traefik:
+    containerSecurityContext: &security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+  secretSync:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  chp:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+hub:
+  podSecurityContext:
+    fsGroup:
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+
+singleuser:
+  # startTimeout: 1200 # Extend because of large image size.
+  uid: # let openshift set the value
+  fsGid:
+  cloudMetadata:
+    blockWithIptables: false
+  image:
+    name: ronligt/jupyter-nbgrader
+    tag: "jupyter_scipy_py3_12_nbgrader_acl"
+
+  storage:
+    type: dynamic
+    capacity: 10Gi
+    homeMountPath: /home/jovyan
+    dynamic:
+      storageClass: ocs-storagecluster-ceph-rbd
+      pvcNameTemplate: claim-{username}-{servername}
+      volumeNameTemplate: claim-{username}-{servername}
+    # mount the nbgrader exchange PVC and set permissions
+    extraVolumes:
+      - name: nbgrader-exchange
+        persistentVolumeClaim:
+          claimName: nbgrader-exchange # from nbgrader-exchange-pvc.yaml (RWX CephFS)
+    extraVolumeMounts:
+      - name: nbgrader-exchange
+        mountPath: /srv/nbgrader
+        readOnly: false
+
+  lifecycleHooks:
+    postStart:
+      exec:
+        command:
+          - sh
+          - -c
+          - >
+            mkdir -p /srv/nbgrader/exchange &&
+            chmod 777 /srv/nbgrader/exchange
+
+
+  extraFiles:
+    # Fixing iframe bug in Formgrader
+    jupyter_server_config.py:
+      mountPath: /etc/jupyter/jupyter_server_config.py
+      stringData: |
+        c = get_config()
+        # Allow the JupyterLab page (same origin) AND your Route domain to frame /formgrader
+        c.ServerApp.tornado_settings = {
+          "headers": {
+            # Adjust the wildcard to your Route base domain if different
+            "Content-Security-Policy": "frame-ancestors 'self' https://notebooks-nbgrader.apps.ocp4.tudelft.nl"
+          }
+        }
+    nbgrader_config.py:
+      mountPath: /etc/jupyter/nbgrader_config.py
+      stringData: |
+        import os
+        c = get_config()
+        c.Exchange.root = "/srv/nbgrader/exchange"
+        c.Exchange.path_includes_course = True
+        c.CourseDirectory.course_id = "ap3122"
+
+prePuller:
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+  hook:
+    enabled: true
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  pause:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+scheduling:
+  userScheduler:
+    enabled: false
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value

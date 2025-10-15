@@ -1,0 +1,11 @@
+# cs101-course-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cs101-course
+spec:
+  accessModes: [ ReadWriteMany ]
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: ocs-storagecluster-cephfs

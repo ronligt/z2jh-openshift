@@ -1,0 +1,182 @@
+# Note: you can amend this values.yaml file to substitute your own custom docker images instead of those
+# provided by the Jupyter project if required.
+
+proxy:
+  service:
+    type: ClusterIP
+  https: # Enable and extend to configure HTTPS.
+    enabled: false
+  traefik:
+    containerSecurityContext: &security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+  secretSync:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  chp:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+hub:
+  podSecurityContext:
+    fsGroup:
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+  config:
+    Authenticator:
+      admin_users:
+        - rligteringen
+
+singleuser:
+  # startTimeout: 1200 # Extend because of large image size.
+  uid: # let openshift set the value
+  fsGid:
+  cloudMetadata:
+    blockWithIptables: false
+  image:
+    name: ronligt/jupyter-nbgrader
+    tag: "6" # (scipy py3.12 nbgrader)
+  networkPolicy:
+    egressAllowRules:
+      privateIPs: true
+
+  storage:
+    type: dynamic
+    extraVolumes:
+      - name: nbgrader-exchange
+        persistentVolumeClaim:
+          claimName: nbgrader-exchange
+    extraVolumeMounts:
+      - name: nbgrader-exchange
+        mountPath: /srv/nbgrader
+
+  # extraEnv:
+  #   JUPYTER_RUNTIME_DIR: /tmp/jupyter-runtime
+
+  lifecycleHooks:
+    postStart:
+      exec:
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            mkdir -p /srv/nbgrader/exchange && chmod 0777 /srv/nbgrader/exchange || true
+            # mkdir -p /tmp/jupyter-runtime && chmod 700 /tmp/jupyter-runtime || true
+            for d in /courses/CS101 /courses/AP3122; do
+              if [ -d "$d" ] || [ -w "$(dirname "$d")" ]; then
+                mkdir -p "$d" && chmod 0777 "$d" || true
+              fi
+            done
+
+  # extraPodConfig:
+  #   securityContext:
+  #     fsGroup: 0
+  #     fsGroupChangePolicy: "OnRootMismatch"
+
+  extraFiles:
+    nbgrader_config.py:
+      mountPath: /etc/jupyter/nbgrader_config.py
+      stringData: |
+        import os
+        c = get_config()
+        # Classic FileExchange -> shared CephFS
+        c.Exchange.root = "/srv/nbgrader/exchange"
+        c.Exchange.path_includes_course = True
+        # Point gradebook to Postgres via env var (set per profile/course)
+        c.CourseDirectory.course_id = "CS101"
+        c.CourseDirectory.root = "/courses/CS101"
+        c.CourseDirectory.db_url = "sqlite:////courses/CS101/gradebook.db"
+        # c.CourseDirectory.db_url = "postgresql+psycopg2://nbgrader:1234abcd@postgresql.nbgrader.svc.cluster.local:5432/nb_cs101"
+
+        # Ignore editor cruft to avoid copy/collect hiccups
+        # c.Exchange.ignore = [
+        #   ".ipynb_checkpoints",
+        #   "**/.ipynb_checkpoints/*",
+        #   "*.pyc",
+        #   "__pycache__",
+        #   ".DS_Store",
+        #   "Thumbs.db",
+        # ]
+
+    jupyter_server_config.py:
+      mountPath: /etc/jupyter/jupyter_server_config.py
+      stringData: |
+        c = get_config()
+        # Allow the JupyterLab page (same origin) AND your Route domain to frame /formgrader
+        c.ServerApp.tornado_settings = {
+          "headers": {
+            # Adjust the wildcard to your Route base domain if different
+            "Content-Security-Policy": "frame-ancestors 'self' https://notebooks-nbgrader.apps.ocp4.tudelft.nl"
+          }
+        }
+
+  # Two spawn profiles: Student vs Instructor (CS101)
+  profileList:
+    - display_name: "Student"
+      description: "Standard JupyterLab"
+      # no course mount, no DB env
+
+    - display_name: "Instructor/TA (CS101)"
+      description: "JupyterLab with shared CS101 course repo"
+      kubespawner_override:
+        # Mount the shared course PVC
+        volumes:
+          - name: cs101-course
+            persistentVolumeClaim:
+              claimName: cs101-course
+        volume_mounts:
+          - name: cs101-course
+            mountPath: /courses
+
+        # Make the course dir exist and be writable (create as user)
+        # lifecycle_hooks:
+        #   postStart:
+        #     exec:
+        #       command:
+        #         - sh
+        #         - -c
+        #         - |
+        #           mkdir -p /courses/CS101 && chmod 0777 /courses/CS101 || true
+
+        # # Provide the Postgres connection for this course
+        # envFrom:
+        #   - secretRef: { name: nbgrader-pg-cs101 }
+
+prePuller:
+  containerSecurityContext:
+    <<: *security_context
+    runAsUser: # let openshift set the value
+    runAsGroup: # let openshift set the value
+  hook:
+    enabled: true
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+  pause:
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value
+
+scheduling:
+  userScheduler:
+    enabled: false
+    containerSecurityContext:
+      <<: *security_context
+      runAsUser: # let openshift set the value
+      runAsGroup: # let openshift set the value

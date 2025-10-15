@@ -1,0 +1,30 @@
+auth:
+  username: nbgrader
+  password: "1234abcd"
+  database: nb_cs101        # first course DB; you can add more via init scripts
+
+primary:
+  persistence:
+    enabled: true
+    storageClass: ocs-storagecluster-ceph-rbd   # RWO is fine for Postgres
+    size: 10Gi
+
+  # OpenShift-friendly security context (use your discovered UID/GID):
+  podSecurityContext:
+    enabled: true
+    fsGroup: 0
+    fsGroupChangePolicy: OnRootMismatch
+  containerSecurityContext:
+    enabled: true
+    runAsNonRoot: true
+    runAsUser: 1001610000
+    allowPrivilegeEscalation: false
+
+  # Create extra DBs (optional)
+  initdbScripts:
+    create_more.sql: |
+      CREATE DATABASE nb_ap3122 OWNER nbgrader;
+
+# Some clusters need this so shared memory uses emptyDir:
+shmVolume:
+  enabled: true
