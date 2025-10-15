@@ -31,6 +31,7 @@ proxy:
 hub:
   podSecurityContext:
     fsGroup:
+    # Solves warning about group membership in terminal
     fsGroupChangePolicy: OnRootMismatch
   containerSecurityContext:
     <<: *security_context
@@ -57,6 +58,7 @@ hub:
     JupyterHub:
       authenticator_class: generic-oauth
   extraConfig:
+    # Take of @tudelft.nl from preferred_username as netid is not provided by TU OpenID
     10-strip-domain: |
       # Strip @domain from the username returned by the IdP
       from oauthenticator.generic import GenericOAuthenticator
@@ -71,7 +73,6 @@ hub:
       c.GenericOAuthenticator.post_auth_hook = strip_domain
 
 singleuser:
-  # startTimeout: 1200 # Extend because of large image size.
   uid: # let openshift set the value
   fsGid:
   cloudMetadata:
@@ -83,40 +84,17 @@ singleuser:
   storage:
     # Prefer one home-storage with home directory per user
     # shortens startup time new users.
+    # Make sure you first do `oc apply -f shared-home.yaml`!
     type: static
     static:
       pvcName: 'shared-home'
       subPath: '{username}'
-    # type: dynamic
-    # capacity: 5Gi
-    # homeMountPath: /home/jovyan
-    # dynamic:
-    #   storageClass: ocs-storagecluster-ceph-rbd
-    #   pvcNameTemplate: claim-{username}-{servername}
-    #   volumeNameTemplate: claim-{username}-{servername}
-    # extraVolumes:
-    #   - name: init-notebook
-    #     configMap:
-    #       name: init-notebook
-    # extraVolumeMounts:
-    #   - name: init-notebook
-    #     mountPath: /opt/init
-    #     readOnly: true
   image:
-#    name: quay.io/jupyter/scipy-notebook
-#    tag: latest
+    # Check docker/Dockerfile
+    # https://jupyter-docker-stacks.readthedocs.io/en/latest/index.html
+    # scipy image with nbgitpuller and jupyter-resource-usage
     name: ronligt/jupyter-tw1-13
     tag: "2"
-  # lifecycleHooks:
-  #   postStart:
-  #     exec:
-  #       command:
-  #         - "bash"
-  #         - "-c"
-  #         - >
-  #           if [ ! -e ./worksheet_6b_numpy.ipynb ]; then
-  #             cp -n /opt/init/worksheet_6b_numpy.ipynb ./;
-  #           fi
 
 prePuller:
   containerSecurityContext:
@@ -137,6 +115,7 @@ prePuller:
 
 scheduling:
   userScheduler:
+    # Turn off userSchedular as we're not admin of OpenShift
     enabled: false
     containerSecurityContext:
       <<: *security_context
